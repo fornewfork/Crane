@@ -8,7 +8,7 @@ use candle_core::{DType, Device};
 use serde::Deserialize;
 use std::path::Path;
 
-use super::backend::{HunyuanBackend, ModelBackend, Qwen25Backend, Qwen3Backend};
+use super::backend::{Gemma4Backend, HunyuanBackend, ModelBackend, Qwen25Backend, Qwen3Backend};
 use crate::chat_template::{AutoChatTemplate, ChatTemplateProcessor, HunyuanChatTemplate};
 
 // ─────────────────────────────────────────────────────────────
@@ -19,6 +19,8 @@ use crate::chat_template::{AutoChatTemplate, ChatTemplateProcessor, HunyuanChatT
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum ModelType {
     Auto,
+    Gemma4,
+    Gemma4VL,
     HunyuanDense,
     Qwen25,
     Qwen3,
@@ -29,6 +31,8 @@ pub enum ModelType {
 impl ModelType {
     pub fn from_str(s: &str) -> Self {
         match s.to_lowercase().as_str() {
+            "gemma4" | "gemma-4" | "gemma4_e2b" => Self::Gemma4,
+            "gemma4_vl" | "gemma4-vl" | "gemma4vl" => Self::Gemma4VL,
             "hunyuan" | "hunyuan_dense" | "hunyuandense" => Self::HunyuanDense,
             "qwen25" | "qwen2.5" | "qwen2" => Self::Qwen25,
             "qwen3" => Self::Qwen3,
@@ -41,6 +45,8 @@ impl ModelType {
     pub fn display_name(&self) -> &'static str {
         match self {
             Self::Auto => "auto",
+            Self::Gemma4 => "gemma4",
+            Self::Gemma4VL => "gemma4_vl",
             Self::HunyuanDense => "hunyuan",
             Self::Qwen25 => "qwen25",
             Self::Qwen3 => "qwen3",
@@ -51,7 +57,7 @@ impl ModelType {
 
     /// Whether this model type is a vision-language model.
     pub fn is_vlm(&self) -> bool {
-        matches!(self, Self::PaddleOcrVl)
+        matches!(self, Self::PaddleOcrVl | Self::Gemma4VL)
     }
 
     /// Whether this model type is a TTS model.
@@ -87,6 +93,7 @@ impl ModelFormat {
 struct HfConfig {
     model_type: Option<String>,
     architectures: Option<Vec<String>>,
+    vision_config: Option<serde_json::Value>,
 }
 
 /// Auto-detect the model type from `config.json` in the model directory.
@@ -106,6 +113,13 @@ pub fn detect_model_type(model_path: &str) -> ModelType {
                 // 1. Check `model_type` field
                 if let Some(ref mt) = config.model_type {
                     match mt.to_lowercase().as_str() {
+                        "gemma4" => {
+                            return if config.vision_config.is_some() {
+                                ModelType::Gemma4VL
+                            } else {
+                                ModelType::Gemma4
+                            };
+                        }
                         "qwen2" | "qwen2.5" => return ModelType::Qwen25,
                         "qwen3" => return ModelType::Qwen3,
                         "qwen3_tts" | "qwen3tts" => return ModelType::Qwen3TTS,
@@ -124,6 +138,9 @@ pub fn detect_model_type(model_path: &str) -> ModelType {
                         }
                         if a.contains("hunyuan") {
                             return ModelType::HunyuanDense;
+                        }
+                        if a.contains("gemma4") {
+                            return ModelType::Gemma4;
                         }
                         if a.contains("qwen3ttsforconditional") || a.contains("qwen3_tts") {
                             return ModelType::Qwen3TTS;
@@ -144,6 +161,8 @@ pub fn detect_model_type(model_path: &str) -> ModelType {
     let path_lower = model_path.to_lowercase();
     if path_lower.contains("paddleocr") {
         ModelType::PaddleOcrVl
+    } else if path_lower.contains("gemma4") || path_lower.contains("gemma-4") {
+        ModelType::Gemma4
     } else if path_lower.contains("hunyuan") {
         ModelType::HunyuanDense
     } else if path_lower.contains("qwen3-tts") || path_lower.contains("qwen3_tts") || path_lower.contains("qwen3tts") {
@@ -193,10 +212,21 @@ pub fn create_backend(
             };
             Ok(Box::new(HunyuanBackend::new(model_path, device, dtype, hy_fmt)?))
         }
+        ModelType::Gemma4 => {
+            let g4_fmt = match format {
+                ModelFormat::Safetensors => crane_core::models::gemma4::ModelFormat::Safetensors,
+                ModelFormat::Gguf => crane_core::models::gemma4::ModelFormat::Gguf,
+                ModelFormat::Auto => crane_core::models::gemma4::ModelFormat::Auto,
+            };
+            Ok(Box::new(Gemma4Backend::new(model_path, device, dtype, g4_fmt)?))
+        }
         ModelType::Qwen25 => Ok(Box::new(Qwen25Backend::new(model_path, device, dtype)?)),
         ModelType::Qwen3 => Ok(Box::new(Qwen3Backend::new(model_path, device, dtype)?)),
         ModelType::PaddleOcrVl => {
             anyhow::bail!("PaddleOCR-VL is a VLM model — use create_vlm_model() instead of create_backend()")
+        }
+        ModelType::Gemma4VL => {
+            anyhow::bail!("Gemma4-VL is a VLM model — use the VLM endpoint instead of create_backend()")
         }
         ModelType::Qwen3TTS => {
             anyhow::bail!("Qwen3-TTS is a TTS model — use create_tts_model() instead of create_backend()")
