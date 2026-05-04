@@ -13,6 +13,7 @@ A high-performance inference framework leveraging Rust's Candle for maximum spee
 - [x] Qwen3 (0.6B ~ 30B+)
 - [x] Qwen 2.5 (0.5B ~ 72B)
 - [x] Hunyuan Dense
+- [x] Gemma 4 (text and vision; no audio)
 - [x] Qwen3 VL (2B, 4B)
 - [x] PaddleOCR VL 0.9B / 1.5
 - [x] Moonshine ASR
@@ -55,6 +56,7 @@ We include:
 
 ## 🔥 Updates
 
+- **`2026.05.04`**: Gemma 4 support added for text and vision models (audio is not supported);
 - **`2026.02.23`**: 🎙️ Qwen3-TTS support added — full Talker + Code Predictor transformer in Candle, native speech-tokenizer decoder (ONNX fallback), voice cloning (Base model ICL), OpenAI `/v1/audio/speech` endpoint in crane-oai;
 - **`2026.02.18`**: ⚡ Qwen3 & Hunyuan Dense inference optimization: pre-allocated KV cache, GQA 4D matmul, fused RoPE with cache pre-growth, GGUF quantization, batched decode, smart sampling fallback for large vocabularies;
 - **`2026.01.30`**: PaddleOCR-VL-1.5 supported now! model: https://huggingface.co/PaddlePaddle/PaddleOCR-VL-1.5/;
